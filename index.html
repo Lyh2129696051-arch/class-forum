@@ -89,7 +89,6 @@
         </select>
         <input type="text" id="title" placeholder="Title">
         <textarea id="content" placeholder="Content..."></textarea>
-        <input type="file" id="video" accept="video/mp4">
         <div id="postLoadingTip" class="loading-tip" style="display:none;"></div>
         <button id="submitPostBtn" class="btn" onclick="createPost()">POST</button>
     </div>
@@ -154,80 +153,41 @@ let isChinese = false;
 let selectedAvatar = null;
 let newAvatarPreview = null;
 let pageSize = 10;
-let lastPostDoc = null;
-let isLoadingMore = false;
-let allLoadedPosts = [];
 let isPosting = false;
 
 const lang = {
-  en: {
-    forumTitle:"Our Class Forum", createPost:"Create Post", all:"All", study:"Study", game:"Game", life:"Life",
-    search:"Search...", title:"Title", content:"Content", darkMode:"🌙 Dark", lightMode:"☀️ Light",
-    myPosts:"My Posts", back:"Back", postingTip:"Publishing post...", repeatPost:"You have posted exactly the same content before, duplicate blocked!"
-  },
-  cn: {
-    forumTitle:"我们的班级论坛", createPost:"发布帖子", all:"全部", study:"学习", game:"游戏", life:"生活",
-    search:"搜索...", title:"标题", content:"内容", darkMode:"🌙 暗黑", lightMode:"☀️ 浅色",
-    myPosts:"我的帖子", back:"返回", postingTip:"发帖中，请稍候...", repeatPost:"你已发布过完全相同的帖子，重复内容已拦截！"
-  }
+  en: { forumTitle:"Our Class Forum", createPost:"Create Post", all:"All", study:"Study", game:"Game", life:"Life", search:"Search...", title:"Title", content:"Content" },
+  cn: { forumTitle:"我们的班级论坛", createPost:"发布帖子", all:"全部", study:"学习", game:"游戏", life:"生活", search:"搜索...", title:"标题", content:"内容" }
 };
 
-// ==============================
-// 自动清除全站重复帖（已完美接入）
-// ==============================
+// ==========================
+// 自动清理重复帖（安全版）
+// ==========================
 window.onload = async function () {
   try {
-    let snap = await db.collection("posts").get();
-    let map = new Map();
-    snap.forEach(doc => {
-      let d = doc.data();
-      let k = (d.title || "") + "|" + (d.content || "");
-      if (map.has(k)) {
-        let old = map.get(k);
-        if (d.time.toDate() > old.time.toDate()) {
-          db.collection("posts").doc(old.id).delete();
-          map.set(k, { id: doc.id, time: d.time });
-        } else {
-          db.collection("posts").doc(doc.id).delete();
-        }
-      } else {
-        map.set(k, { id: doc.id, time: d.time });
-      }
+    const snapshot = await db.collection("posts").get();
+    const postMap = new Map();
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      const key = (d.title||"") + "|" + (d.content||"");
+      if (!postMap.has(key)) postMap.set(key, []);
+      postMap.get(key).push({ id: doc.id, time: d.time?.toDate() || new Date(0) });
     });
-    console.log("✅ 重复帖子已清理");
+
+    for (let [k, items] of postMap) {
+      if (items.length <= 1) continue;
+      items.sort((a, b) => b.time - a.time);
+      for (let i=1; i<items.length; i++) {
+        await db.collection("posts").doc(items[i].id).delete();
+      }
+    }
+    console.log("✅ 重复帖清理完成");
   } catch (e) {}
 };
 
-function showTab(t) {
-  document.getElementById("login-box").style.display = t=="login"?"block":"none";
-  document.getElementById("register-box").style.display = t=="register"?"block":"none";
-  document.querySelectorAll(".tab-btn").forEach((b,i)=>b.classList.toggle("active",i==(t=="login"?0:1)));
-}
-
-function toggleLang() {
-  isChinese = !isChinese;
-  document.getElementById("langText").innerText = isChinese ? "English" : "中文";
-  let t = isChinese ? lang.cn : lang.en;
-  document.getElementById("forumTitle").innerText = t.forumTitle;
-  document.getElementById("createPostTitle").innerText = t.createPost;
-  document.getElementById("search").placeholder = t.search;
-  document.getElementById("title").placeholder = t.title;
-  document.getElementById("content").placeholder = t.content;
-  document.getElementById("catAll").innerText = t.all;
-  document.getElementById("catStudy").innerText = t.study;
-  document.getElementById("catGame").innerText = t.game;
-  document.getElementById("catLife").innerText = t.life;
-  document.getElementById("optStudy").innerText = t.study;
-  document.getElementById("optGame").innerText = t.game;
-  document.getElementById("optLife").innerText = t.life;
-  document.getElementById("myPostsTitle").innerText = t.myPosts;
-  document.querySelector(".back-btn").innerText = isChinese ? "← 返回" : "← Back";
-}
-
-function toggleTheme() {
-  document.body.classList.toggle("dark");
-}
-
+// ==========================
+// 头像显示修复
+// ==========================
 document.getElementById("reg-avatar").addEventListener("change", e=>{
   let f = e.target.files[0];
   if(f) { selectedAvatar = f; document.getElementById("avatarPreview").src = URL.createObjectURL(f); }
@@ -238,12 +198,21 @@ function previewNewAvatar() {
   if(f) newAvatarPreview = f;
 }
 
+// ==========================
+// 登录 / 注册 / 渲染
+// ==========================
+function showTab(t) {
+  document.getElementById("login-box").style.display = t=="login"?"block":"none";
+  document.getElementById("register-box").style.display = t=="register"?"block":"none";
+  document.querySelectorAll(".tab-btn").forEach((b,i)=>b.classList.toggle("active",i==(t=="login"?0:1)));
+}
+
 async function register() {
   let u = document.getElementById("reg-user").value.trim();
   let p = document.getElementById("reg-pwd").value.trim();
-  if(!u||!p) return alert("Fill all input fields!");
+  if(!u||!p) return alert("Fill all!");
   let snap = await db.collection("users").where("user","==",u).get();
-  if(!snap.empty) return alert("This username already exists!");
+  if(!snap.empty) return alert("Username exists!");
   let avatarUrl = "none";
   if(selectedAvatar) {
     let ref = storage.ref("avatars/"+Date.now());
@@ -251,7 +220,7 @@ async function register() {
     avatarUrl = await ref.getDownloadURL();
   }
   await db.collection("users").add({user:u,pwd:p,avatar:avatarUrl});
-  alert("Register success! Please login.");
+  alert("Register success!");
   showTab("login");
 }
 
@@ -259,7 +228,7 @@ async function login() {
   let u = document.getElementById("login-user").value.trim();
   let p = document.getElementById("login-pwd").value.trim();
   let snap = await db.collection("users").where("user","==",u).where("pwd","==",p).get();
-  if(snap.empty) return alert("Wrong username or password!");
+  if(snap.empty) return alert("Wrong account!");
   currentUser = u;
   document.getElementById("auth").style.display = "none";
   document.getElementById("header").style.display = "flex";
@@ -283,32 +252,14 @@ function showMain() {
 }
 
 async function loadProfile() {
+  let userSnap = await db.collection("users").where("user","==",currentUser).get();
+  let avatar = "none";
+  if(!userSnap.empty) avatar = userSnap.docs[0].data().avatar;
+  document.getElementById("profileAvatar").src = avatar !== "none" ? avatar : '';
   document.getElementById("profileName").innerText = currentUser;
-  document.getElementById("newUsername").value = currentUser;
-  let snap = await db.collection("posts")
-    .where("user","==",currentUser)
-    .orderBy("time","desc")
-    .limit(10)
-    .get();
-  let posts = snap.docs.map(d=>d.data());
-  let totalLikes = posts.reduce((s,p)=>s+(p.likes||0),0);
-  document.getElementById("postCount").innerText = posts.length;
-  document.getElementById("likeCount").innerText = totalLikes;
-  let c = document.getElementById("myPostsContainer");
-  c.innerHTML = "";
-  posts.forEach(p=>{
-    let cs = (p.comments||[]).map(x=>`<div class="comment">${x.user}: ${x.text}</div>`).join("");
-    c.innerHTML += `<div class="post-card"><div class="post-cat">${p.cat}</div><div class="post-title">${p.title}</div><div class="like">❤️ ${p.likes||0}</div>${cs}</div>`;
-  });
 }
 
-async function updateProfile() {
-  let newName = document.getElementById("newUsername").value.trim();
-  if(!newName) return alert("Username cannot be empty!");
-  let userSnap = await db.collection("users").where("user","==",currentUser).get();
-  if(userSnap.empty) return;
-  alert("Profile updated!");
-}
+async function updateProfile() { alert("Profile updated!"); }
 
 async function createPost() {
   const title = document.getElementById("title").value.trim();
@@ -316,21 +267,11 @@ async function createPost() {
   const cat = document.getElementById("category").value;
   if (!title || !content || isPosting) return;
   isPosting = true;
-  document.getElementById("submitPostBtn").disabled = true;
-  document.getElementById("postLoadingTip").style.display = "block";
-  document.getElementById("postLoadingTip").innerText = isChinese ? "发帖中..." : "Posting...";
-  try {
-    await db.collection("posts").add({
-      user: currentUser, title, content, cat,
-      time: new Date(), likes:0, comments:[]
-    });
-    document.getElementById("title").value = "";
-    document.getElementById("content").value = "";
-    renderPosts();
-  } catch (e) { }
+  await db.collection("posts").add({ user: currentUser, title, content, cat, time: new Date(), likes:0 });
+  document.getElementById("title").value = "";
+  document.getElementById("content").value = "";
+  renderPosts();
   isPosting = false;
-  document.getElementById("submitPostBtn").disabled = false;
-  document.getElementById("postLoadingTip").style.display = "none";
 }
 
 async function renderPosts() {
@@ -338,13 +279,17 @@ async function renderPosts() {
   let snap = await q.get();
   let container = document.getElementById("postsContainer");
   container.innerHTML = "";
-  snap.forEach(doc => {
+  
+  for(const doc of snap.docs) {
     let p = doc.data();
-    let id = doc.id;
+    let userSnap = await db.collection("users").where("user","==",p.user).get();
+    let avatar = "none";
+    if(!userSnap.empty) avatar = userSnap.docs[0].data().avatar;
+    
     container.innerHTML += `
       <div class="post-card">
         <div class="user">
-          <div class="avatar">${p.user?.[0] || "U"}</div>
+          ${avatar !== "none" ? `<img src="${avatar}" class="avatar">` : `<div class="avatar">${p.user?.[0] || "U"}</div>`}
           <div>
             <div>${p.user}</div>
             <div class="post-time">${new Date(p.time.toDate()).toLocaleString()}</div>
@@ -353,10 +298,10 @@ async function renderPosts() {
         <div class="post-cat">${p.cat}</div>
         <div class="post-title">${p.title}</div>
         <div class="post-content">${p.content}</div>
-        <div class="like" onclick="like('${id}', ${p.likes||0})">❤️ ${p.likes||0}</div>
+        <div class="like" onclick="like('${doc.id}', ${p.likes||0})">❤️ ${p.likes||0}</div>
       </div>
     `;
-  });
+  }
 }
 
 async function like(postId, currentLikes) {
@@ -364,13 +309,22 @@ async function like(postId, currentLikes) {
   renderPosts();
 }
 
-function filterCat(cat) {
-  currentCat = cat;
-  renderPosts();
-}
-
-function resetSearch() {
-  renderPosts();
+function filterCat(cat) { currentCat = cat; renderPosts(); }
+function resetSearch() { renderPosts(); }
+function toggleTheme() { document.body.classList.toggle("dark"); }
+function toggleLang() {
+  isChinese = !isChinese;
+  document.getElementById("langText").innerText = isChinese ? "English" : "中文";
+  let t = isChinese ? lang.cn : lang.en;
+  document.getElementById("forumTitle").innerText = t.forumTitle;
+  document.getElementById("createPostTitle").innerText = t.createPost;
+  document.getElementById("search").placeholder = t.search;
+  document.getElementById("title").placeholder = t.title;
+  document.getElementById("content").placeholder = t.content;
+  document.getElementById("catAll").innerText = t.all;
+  document.getElementById("catStudy").innerText = t.study;
+  document.getElementById("catGame").innerText = t.game;
+  document.getElementById("catLife").innerText = t.life;
 }
 </script>
 </body>

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Our Class Forum</title>
+    <style>
+        :root {
+            --bg: #f7f8fa; --card: #ffffff; --text: #1e293b; --gray: #64748b;
+            --light-gray: #e2e8f0; --primary: #3b82f6;
+        }
+        .dark {
+            --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --gray: #94a3b8; --light-gray: #334155;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body { background: var(--bg); color: var(--text); transition: 0.3s; }
+        .auth-modal { max-width: 400px; margin: 80px auto; background: var(--card); padding: 30px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .tab-btn { flex:1; padding:10px; border:none; background:var(--light-gray); border-radius:8px; cursor:pointer; font-weight:600; }
+        .tab-btn.active { background:var(--primary); color:white; }
+        header { background:var(--primary); color:white; padding:1rem 2rem; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
+        .logo { display:flex; align-items:center; gap:10px; }
+        .class-avatar { width:40px; height:40px; background:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; color:var(--primary); }
+        .container { max-width:900px; margin:30px auto; padding:0 20px; }
+        #search { width:100%; padding:12px 16px; border-radius:10px; border:1px solid var(--light-gray); font-size:15px; background:var(--card); color:var(--text); }
+        .category { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+        .cat { padding:8px 14px; border-radius:20px; background:var(--light-gray); cursor:pointer; font-size:14px; }
+        .cat.active { background:var(--primary); color:white; }
+        .post-card, .create-post, .profile-card {
+            background:var(--card); border-radius:14px; padding:22px; margin-bottom:20px; box-shadow:0 3px 10px rgba(0,0,0,0.05);
+        }
+        .user { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+        .avatar { width:44px; height:44px; border-radius:50%; object-fit:cover; background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-weight:bold; cursor:pointer; }
+        .post-time { font-size:12px; color:var(--gray); }
+        .post-title { font-size:19px; font-weight:600; margin:10px 0; }
+        .post-content { line-height:1.5; color:var(--text); }
+        .post-cat { display:inline-block; padding:4px 8px; border-radius:6px; font-size:12px; background:#e0f2fe; color:#0369a1; margin:6px 0; }
+        video, img { max-width:100%; border-radius:10px; margin:10px 0; max-height:400px; background:#000; }
+        .btn { padding:9px 16px; border:none; border-radius:8px; background:var(--primary); color:white; cursor:pointer; font-size:14px; margin:6px 4px; }
+        input, textarea, select { width:100%; padding:12px; margin:8px 0; border:1px solid var(--light-gray); border-radius:8px; font-size:15px; background:var(--card); color:var(--text); }
+        .comment { background:var(--light-gray); padding:12px; border-radius:8px; margin-top:10px; }
+        .comment-user { font-weight:bold; color:var(--primary); margin-bottom:4px; }
+        .comment-avatar { width:32px; height:32px; border-radius:50%; object-fit:cover; }
+        .comment-like { color:#ef4444; font-size:13px; cursor:pointer; margin-top:6px; display:inline-block; }
+        .like { color:#ef4444; font-weight:500; cursor:pointer; display:inline-block; margin:6px; }
+        .theme-toggle, .lang-btn { background:none; border:none; color:white; font-size:16px; cursor:pointer; margin-left:10px; }
+        .flex { display:flex; gap:10px; align-items:center; }
+        .wrap { flex-wrap:wrap; }
+        .avatar-preview { width:60px; height:60px; border-radius:50%; background:var(--light-gray); margin:10px 0; object-fit:cover; }
+        .lang-label { font-size:14px; }
+        .profile-avatar { width:100px; height:100px; border-radius:50%; object-fit:cover; background:var(--primary); color:white; font-size:32px; display:flex; align-items:center; justify-content:center; margin:0 auto; }
+        .stats { display:flex; justify-content:space-around; margin:16px 0; }
+        .stat-item { text-align:center; }
+        .stat-item b { font-size:18px; }
+        .back-btn { cursor:pointer; color:var(--primary); margin-bottom:10px; }
+    </style>
+</head>
+<body>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+
+<header id="header" style="display:none;">
+    <div class="logo"><div class="class-avatar">C</div><h2 id="forumTitle">Our Class Forum</h2></div>
+    <div class="flex">
+        <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark Mode</button>
+        <button class="lang-btn" onclick="toggleLang()"><span class="lang-label" id="langText">中文</span></button>
+        <div id="userInfo" class="flex" style="cursor:pointer" onclick="goToProfile()"></div>
+    </div>
+</header>
+
+<div class="container" id="app" style="display:none;">
+    <div class="search-bar"><input id="search" placeholder="Search posts..." oninput="renderPosts()"></div>
+    <div class="category">
+        <div class="cat active" onclick="filterCat('all')" id="catAll">All</div>
+        <div class="cat" onclick="filterCat('Study')" id="catStudy">Study</div>
+        <div class="cat" onclick="filterCat('Game')" id="catGame">Game</div>
+        <div class="cat" onclick="filterCat('Life')" id="catLife">Life</div>
+    </div>
+    <div class="create-post">
+        <h3 id="createPostTitle">Create Post</h3>
+        <select id="category">
+            <option value="Study" id="optStudy">Study</option>
+            <option value="Game" id="optGame">Game</option>
+            <option value="Life" id="optLife">Life</option>
+        </select>
+        <input type="text" id="title" placeholder="Title">
+        <textarea id="content" placeholder="Content..."></textarea>
+        <input type="file" id="video" accept="video/mp4">
+        <button class="btn" onclick="createPost()">POST</button>
+    </div>
+    <div id="postsContainer"></div>
+</div>
+
+<div class="container" id="profilePage" style="display:none;">
+    <div class="back-btn" onclick="showMain()">← Back</div>
+    <div class="profile-card">
+        <img class="profile-avatar" id="profileAvatar">
+        <h2 style="text-align:center" id="profileName"></h2>
+        <div class="stats">
+            <div class="stat-item"><b id="postCount">0</b><br>Posts</div>
+            <div class="stat-item"><b id="likeCount">0</b><br>Likes</div>
+        </div>
+        <input type="text" id="newUsername" placeholder="New Username">
+        <input type="file" id="newAvatar" accept="image/*" onchange="previewNewAvatar()">
+        <button class="btn" onclick="updateProfile()" style="width:100%">Save</button>
+    </div>
+    <h3 id="myPostsTitle">My Posts</h3>
+    <div id="myPostsContainer"></div>
+</div>
+
+<div id="auth" class="auth-modal">
+    <div class="flex" style="margin-bottom:20px;">
+        <button class="tab-btn active" onclick="showTab('login')">Login</button>
+        <button class="tab-btn" onclick="showTab('register')">Register</button>
+    </div>
+    <div id="login-box">
+        <input id="login-user" placeholder="Username">
+        <input type="password" id="login-pwd" placeholder="Password">
+        <button class="btn" onclick="login()" style="width:100%">LOGIN</button>
+    </div>
+    <div id="register-box" style="display:none;">
+        <input id="reg-user" placeholder="Username">
+        <input type="password" id="reg-pwd" placeholder="Password">
+        <p style="margin:6px 0;">Upload Avatar</p>
+        <input type="file" id="reg-avatar" accept="image/*">
+        <img class="avatar-preview" id="avatarPreview">
+        <button class="btn" onclick="register()" style="width:100%">REGISTER</button>
+    </div>
+</div>
+
+<script>
+// 已替换为你提供的真实 Firebase 配置
+const firebaseConfig = {
+  apiKey: "AIzaSyDRSvwcwgSrwuIfaShRLEU2327txS_wTf8",
+  authDomain: "forum-class.firebaseapp.com",
+  projectId: "forum-class",
+  storageBucket: "forum-class.firebasestorage.app",
+  messagingSenderId: "909448692422",
+  appId: "1:909448692422:web:0f3489544672625cbe0dc7",
+  measurementId: "G-SHNK91J8Q1"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+let currentUser = null;
+let currentCat = "all";
+let isChinese = false;
+let selectedAvatar = null;
+let newAvatarPreview = null;
+
+const lang = {
+  en: { forumTitle:"Our Class Forum", createPost:"Create Post", all:"All", study:"Study", game:"Game", life:"Life", search:"Search...", title:"Title", content:"Content", darkMode:"🌙 Dark", lightMode:"☀️ Light", myPosts:"My Posts", back:"Back" },
+  cn: { forumTitle:"我们的班级论坛", createPost:"发布帖子", all:"全部", study:"学习", game:"游戏", life:"生活", search:"搜索...", title:"标题", content:"内容", darkMode:"🌙 暗黑", lightMode:"☀️ 浅色", myPosts:"我的帖子", back:"返回" }
+};
+
+function showTab(t) {
+  document.getElementById("login-box").style.display = t=="login"?"block":"none";
+  document.getElementById("register-box").style.display = t=="register"?"block":"none";
+  document.querySelectorAll(".tab-btn").forEach((b,i)=>b.classList.toggle("active",i==(t=="login"?0:1)));
+}
+
+function toggleLang() {
+  isChinese = !isChinese;
+  document.getElementById("langText").innerText = isChinese ? "English" : "中文";
+  let t = isChinese ? lang.cn : lang.en;
+  document.getElementById("forumTitle").innerText = t.forumTitle;
+  document.getElementById("createPostTitle").innerText = t.createPost;
+  document.getElementById("search").placeholder = t.search;
+  document.getElementById("title").placeholder = t.title;
+  document.getElementById("content").placeholder = t.content;
+  document.getElementById("catAll").innerText = t.all;
+  document.getElementById("catStudy").innerText = t.study;
+  document.getElementById("catGame").innerText = t.game;
+  document.getElementById("catLife").innerText = t.life;
+  document.getElementById("optStudy").innerText = t.study;
+  document.getElementById("optGame").innerText = t.game;
+  document.getElementById("optLife").innerText = t.life;
+  document.getElementById("myPostsTitle").innerText = t.myPosts;
+  document.querySelector(".back-btn").innerText = isChinese ? "← 返回" : "← Back";
+}
+
+function toggleTheme() {
+  document.body.classList.toggle("dark");
+}
+
+document.getElementById("reg-avatar").addEventListener("change", e=>{
+  let f = e.target.files[0];
+  if(f) { selectedAvatar = f; document.getElementById("avatarPreview").src = URL.createObjectURL(f); }
+});
+
+function previewNewAvatar() {
+  let f = document.getElementById("newAvatar").files[0];
+  if(f) newAvatarPreview = f;
+}
+
+async function register() {
+  let u = document.getElementById("reg-user").value.trim();
+  let p = document.getElementById("reg-pwd").value.trim();
+  if(!u||!p) return alert("Fill all input fields!");
+  let snap = await db.collection("users").where("user","==",u).get();
+  if(!snap.empty) return alert("This username already exists!");
+  let avatarUrl = "none";
+  if(selectedAvatar) {
+    let ref = storage.ref("avatars/"+Date.now());
+    await ref.put(selectedAvatar);
+    avatarUrl = await ref.getDownloadURL();
+  }
+  await db.collection("users").add({user:u,pwd:p,avatar:avatarUrl});
+  alert("Register success! Please login.");
+  showTab("login");
+}
+
+async function login() {
+  let u = document.getElementById("login-user").value.trim();
+  let p = document.getElementById("login-pwd").value.trim();
+  let snap = await db.collection("users").where("user","==",u).where("pwd","==",p).get();
+  if(snap.empty) return alert("Wrong username or password!");
+  currentUser = u;
+  document.getElementById("auth").style.display = "none";
+  document.getElementById("header").style.display = "flex";
+  document.getElementById("app").style.display = "block";
+  refreshUserInfo();
+  renderPosts();
+}
+
+function refreshUserInfo() {
+  document.getElementById("userInfo").innerHTML = `<div class="avatar">${currentUser[0]}</div><span>${currentUser}</span>`;
+}
+
+function goToProfile() {
+  document.getElementById("app").style.display = "none";
+  document.getElementById("profilePage").style.display = "block";
+  loadProfile();
+}
+function showMain() {
+  document.getElementById("profilePage").style.display = "none";
+  document.getElementById("app").style.display = "block";
+}
+
+async function loadProfile() {
+  document.getElementById("profileName").innerText = currentUser;
+  document.getElementById("newUsername").value = currentUser;
+  let snap = await db.collection("posts").where("user","==",currentUser).orderBy("time","desc").get();
+  let posts = snap.docs.map(d=>d.data());
+  let totalLikes = posts.reduce((s,p)=>s+(p.likes||0),0);
+  document.getElementById("postCount").innerText = posts.length;
+  document.getElementById("likeCount").innerText = totalLikes;
+  let c = document.getElementById("myPostsContainer");
+  c.innerHTML = "";
+  posts.forEach(p=>{
+    let cs = (p.comments||[]).map(x=>`<div class="comment">${x.user}: ${x.text}</div>`).join("");
+    c.innerHTML += `<div class="post-card"><div class="post-cat">${p.cat}</div><div class="post-title">${p.title}</div><div class="like">❤️ ${p.likes||0}</div>${cs}</div>`;
+  });
+}
+
+async function updateProfile() {
+  let newName = document.getElementById("newUsername").value.trim();
+  if(!newName) return alert("Username cannot be empty!");
+  let userSnap = await db.collection("users").where("user","==",currentUser).get();
+  if(userSnap.empty) return;
+  let userDoc = userSnap.docs[0];
+  if(newAvatarPreview) {
+    let ref = storage.ref("avatars/"+Date.now());
+    await ref.put(newAvatarPreview);
+    let url = await ref.getDownloadURL();
+    await userDoc.ref.update({avatar:url});
+  }
+  if(newName!==currentUser) {
+    let nameCheck = await db.collection("users").where("user","==",newName).get();
+    if(!nameCheck.empty) return alert("New username already taken!");
+    await userDoc.ref.update({user:newName});
+    let postsSnap = await db.collection("posts").where("user","==",currentUser).get();
+    postsSnap.forEach(async d=>{
+      let data = d.data();
+      let newComments = data.comments.map(item=>{
+        if(item.user === currentUser) item.user = newName;
+        return item;
+      });
+      await d.ref.update({user:newName, comments:newComments});
+    });
+    currentUser = newName;
+    refreshUserInfo();
+  }
+  alert("Profile updated successfully!");
+  loadProfile();
+}
+
+function filterCat(c) { currentCat = c; renderPosts(); }
+
+async function renderPosts() {
+  let snap = await db.collection("posts").orderBy("time","desc").get();
+  let list = snap.docs.map(d=>({id:d.id,...d.data()}));
+  if(currentCat!=="all") list = list.filter(p=>p.cat===currentCat);
+  let kw = document.getElementById("search").value.toLowerCase();
+  if(kw) list = list.filter(p=>p.title.toLowerCase().includes(kw));
+  let c = document.getElementById("postsContainer");
+  c.innerHTML = "";
+  list.forEach(p=>{
+    let v = p.video ? `<video controls src="${p.video}"></video>` : "";
+    let cs = (p.comments||[]).map((x,i)=>`
+      <div class="comment flex" style="align-items:flex-start;">
+        <div style="flex:1;">
+          <div class="comment-user">${x.user}</div>${x.text}
+          ${x.image ? `<img style="max-width:180px;" src="${x.image}">` : ""}
+          ${x.video ? `<video style="max-width:180px;" controls src="${x.video}">` : ""}
+          <div class="comment-like" onclick="likeComment('${p.id}',${i})">❤️ ${x.likes||0}</div>
+        </div>
+      </div>`).join("");
+    let placeholder = isChinese ? "写评论..." : "Write comment...";
+    c.innerHTML += `
+    <div class="post-card">
+      <div class="user"><div class="avatar">${p.user[0]}</div><strong>${p.user}</strong></div>
+      <div class="post-cat">${p.cat}</div>
+      <div class="post-title">${p.title}</div>
+      <div class="post-content">${p.content}</div>${v}
+      <div class="like" onclick="likePost('${p.id}')">❤️ ${p.likes||0}</div>
+      <div class="flex wrap" style="margin-top:10px;">
+        <input placeholder="${placeholder}" id="c${p.id}" style="flex:1;">
+        <input type="file" id="cimg${p.id}" accept="image/*" style="width:auto;">
+        <input type="file" id="cvid${p.id}" accept="video/mp4" style="width:auto;">
+        <button class="btn" onclick="addComment('${p.id}')">${isChinese?'发送':'Send'}</button>
+      </div>
+      ${cs}
+    </div>`;
+  });
+}
+
+async function createPost() {
+  if(!currentUser) return;
+  let cat = document.getElementById("category").value;
+  let title = document.getElementById("title").value.trim();
+  let content = document.getElementById("content").value.trim();
+  let videoFile = document.getElementById("video").files[0];
+  if(!title||!content) return alert("Title and content cannot be empty!");
+  let videoUrl = "";
+  if(videoFile) {
+    let ref = storage.ref("postVideo/"+Date.now());
+    await ref.put(videoFile);
+    videoUrl = await ref.getDownloadURL();
+  }
+  await db.collection("posts").add({
+    user:currentUser,cat,title,content,
+    video:videoUrl,likes:0,comments:[],time:new Date().toLocaleString()
+  });
+  document.getElementById("title").value = "";
+  document.getElementById("content").value = "";
+  document.getElementById("video").value = "";
+  renderPosts();
+}
+
+async function likePost(pid) {
+  let doc = await db.collection("posts").doc(pid).get();
+  await doc.ref.update({likes: (doc.data().likes||0)+1});
+  renderPosts();
+}
+
+async function addComment(pid) {
+  let t = document.getElementById(`c${pid}`).value.trim();
+  let imgFile = document.getElementById(`cimg${pid}`).files[0];
+  let vidFile = document.getElementById(`cvid${pid}`).files[0];
+  if(!t && !imgFile && !vidFile) return alert("Cannot send empty comment!");
+  let imgUrl = null, vidUrl = null;
+  if(imgFile) {
+    let ref = storage.ref("commentImg/"+Date.now());
+    await ref.put(imgFile);
+    imgUrl = await ref.getDownloadURL();
+  }
+  if(vidFile) {
+    let ref = storage.ref("commentVideo/"+Date.now());
+    await ref.put(vidFile);
+    vidUrl = await ref.getDownloadURL();
+  }
+  let doc = await db.collection("posts").doc(pid).get();
+  let cs = doc.data().comments || [];
+  cs.push({user:currentUser,text:t,image:imgUrl,video:vidUrl,likes:0});
+  await doc.ref.update({comments:cs});
+  document.getElementById(`c${pid}`).value = "";
+  document.getElementById(`cimg${pid}`).value = "";
+  document.getElementById(`cvid${pid}`).value = "";
+  renderPosts();
+}
+
+async function likeComment(pid, idx) {
+  let doc = await db.collection("posts").doc(pid).get();
+  let cs = doc.data().comments || [];
+  if(cs[idx]) cs[idx].likes = (cs[idx].likes||0)+1;
+  await doc.ref.update({comments:cs});
+  renderPosts();
+}
+</script>
+</body>
+</html>

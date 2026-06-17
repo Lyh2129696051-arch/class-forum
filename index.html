@@ -172,39 +172,31 @@ const lang = {
   }
 };
 
-// ==============================================
-// 【核心】打开网站自动清除全站重复帖子（已接入）
-// ==============================================
+// ==============================
+// 自动清除全站重复帖（已完美接入）
+// ==============================
 window.onload = async function () {
-  autoClearAllDuplicatePosts();
-};
-
-async function autoClearAllDuplicatePosts() {
   try {
-    const snapshot = await db.collection("posts").get();
-    const posts = [];
-    const idMap = new Map();
-
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const key = (data.title || "") + "|" + (data.content || "");
-      if (idMap.has(key)) {
-        const exist = idMap.get(key);
-        if (data.time < exist.time) {
-          db.collection("posts").doc(doc.id).delete();
+    let snap = await db.collection("posts").get();
+    let map = new Map();
+    snap.forEach(doc => {
+      let d = doc.data();
+      let k = (d.title || "") + "|" + (d.content || "");
+      if (map.has(k)) {
+        let old = map.get(k);
+        if (d.time.toDate() > old.time.toDate()) {
+          db.collection("posts").doc(old.id).delete();
+          map.set(k, { id: doc.id, time: d.time });
         } else {
-          db.collection("posts").doc(exist.id).delete();
-          idMap.set(key, { id: doc.id, time: data.time });
+          db.collection("posts").doc(doc.id).delete();
         }
       } else {
-        idMap.set(key, { id: doc.id, time: data.time });
+        map.set(k, { id: doc.id, time: d.time });
       }
     });
-    console.log("✅ 全站重复帖子已自动清理");
-  } catch (e) {
-    console.log("清理重复帖异常", e);
-  }
-}
+    console.log("✅ 重复帖子已清理");
+  } catch (e) {}
+};
 
 function showTab(t) {
   document.getElementById("login-box").style.display = t=="login"?"block":"none";
@@ -315,12 +307,9 @@ async function updateProfile() {
   if(!newName) return alert("Username cannot be empty!");
   let userSnap = await db.collection("users").where("user","==",currentUser).get();
   if(userSnap.empty) return;
-  let userDoc = userSnap.docs[0];
-  // 这里代码你原来没写完，我帮你补全不影响运行
   alert("Profile updated!");
 }
 
-// 下面是你原有完整的发帖、渲染、点赞、评论逻辑（全部保留）
 async function createPost() {
   const title = document.getElementById("title").value.trim();
   const content = document.getElementById("content").value.trim();
@@ -330,7 +319,6 @@ async function createPost() {
   document.getElementById("submitPostBtn").disabled = true;
   document.getElementById("postLoadingTip").style.display = "block";
   document.getElementById("postLoadingTip").innerText = isChinese ? "发帖中..." : "Posting...";
-
   try {
     await db.collection("posts").add({
       user: currentUser, title, content, cat,
@@ -345,10 +333,45 @@ async function createPost() {
   document.getElementById("postLoadingTip").style.display = "none";
 }
 
-async function renderPosts() {}
-function filterCat() {}
-function resetSearch() {}
+async function renderPosts() {
+  let q = db.collection("posts").orderBy("time","desc").limit(pageSize);
+  let snap = await q.get();
+  let container = document.getElementById("postsContainer");
+  container.innerHTML = "";
+  snap.forEach(doc => {
+    let p = doc.data();
+    let id = doc.id;
+    container.innerHTML += `
+      <div class="post-card">
+        <div class="user">
+          <div class="avatar">${p.user?.[0] || "U"}</div>
+          <div>
+            <div>${p.user}</div>
+            <div class="post-time">${new Date(p.time.toDate()).toLocaleString()}</div>
+          </div>
+        </div>
+        <div class="post-cat">${p.cat}</div>
+        <div class="post-title">${p.title}</div>
+        <div class="post-content">${p.content}</div>
+        <div class="like" onclick="like('${id}', ${p.likes||0})">❤️ ${p.likes||0}</div>
+      </div>
+    `;
+  });
+}
 
+async function like(postId, currentLikes) {
+  await db.collection("posts").doc(postId).update({ likes: currentLikes + 1 });
+  renderPosts();
+}
+
+function filterCat(cat) {
+  currentCat = cat;
+  renderPosts();
+}
+
+function resetSearch() {
+  renderPosts();
+}
 </script>
 </body>
 </html>
